@@ -17,9 +17,10 @@ Minimal Next.js partner-platform simulator for testing an embedded MinCFO integr
 Set these env vars in `.env.local` for local development and in your deployment platform config for production:
 
 - `MINCFO_EMBED_SHARED_SECRET`: required MinCFO shared secret used to sign embed launch tokens
-- `MINCFO_BASE_URL`: MinCFO app base URL
-- `MINCFO_PARTNER_ID`: partner id, currently `onio`
-- `MINCFO_RETURN_TO_PARTNER_URL`: return URL back to this app
+- `MINCFO_PARTNER_ID`: partner id used by the server token minting route, defaults to `onio`
+- `NEXT_PUBLIC_MINCFO_BASE_URL`: MinCFO app base URL used by the browser iframe flow
+- `NEXT_PUBLIC_MINCFO_PARTNER_ID`: partner id used by the browser launch URL, defaults to `onio`
+- `NEXT_PUBLIC_MINCFO_RETURN_TO_PARTNER_URL`: return URL back to this app used by the browser launch flow
 
 You can start from `.env.example`.
 
