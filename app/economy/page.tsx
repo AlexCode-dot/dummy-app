@@ -21,6 +21,13 @@ type LoggedEvent = {
   data: string;
 };
 
+type EmbedPayload = {
+  partner?: string;
+  nonce?: string;
+  iat?: number;
+  exp?: number;
+};
+
 const MINCFO_BASE_URL =
   process.env.NEXT_PUBLIC_MINCFO_BASE_URL || "http://localhost:3000";
 const MINCFO_RETURN_TO_PARTNER_URL =
@@ -71,6 +78,19 @@ function prettyValue(value: unknown): string {
   }
 }
 
+function decodePayloadSegment(token: string): EmbedPayload | null {
+  const [payloadSegment] = token.split(".");
+  if (!payloadSegment) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(atob(payloadSegment.replace(/-/g, "+").replace(/_/g, "/"))) as EmbedPayload;
+  } catch {
+    return null;
+  }
+}
+
 export default function EconomyPage() {
   const [form, setForm] = useState<FormState>(initialForm);
   const [isMinting, setIsMinting] = useState(false);
@@ -103,6 +123,21 @@ export default function EconomyPage() {
   useEffect(() => {
     iframeUrlRef.current = iframeUrl;
   }, [iframeUrl]);
+
+  useEffect(() => {
+    if (!mintedToken || !iframeUrl) {
+      return;
+    }
+
+    const decodedPayload = decodePayloadSegment(mintedToken);
+    const now = Math.floor(Date.now() / 1000);
+
+    console.log("IFRAME_LOAD_EXP_CHECK", {
+      now,
+      exp: decodedPayload?.exp,
+      stillValid: typeof decodedPayload?.exp === "number" ? decodedPayload.exp > now : false,
+    });
+  }, [mintedToken, iframeUrl]);
 
   useEffect(() => {
     try {
