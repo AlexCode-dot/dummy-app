@@ -33,8 +33,8 @@ const PARTNER_ID = "dummy-app";
 const initialForm: FormState = {
   partner: PARTNER_ID,
   sub: "demo-user-1",
-  externalTenantId: "demo-tenant-1",
-  externalAccountId: "demo-account-1",
+  externalTenantId: "tenant-1",
+  externalAccountId: "account-1",
   companyId: "",
   companySlug: "",
   target: "/embed/insights",
