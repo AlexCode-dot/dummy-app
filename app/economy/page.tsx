@@ -28,6 +28,14 @@ type EmbedPayload = {
   exp?: number;
 };
 
+type ResumeDebugState = {
+  postMessageReceived: boolean;
+  lastReason: string;
+  iframeUrlBeforeRelaunch: string;
+  iframeUrlAfterRelaunch: string;
+  freshTokenMinted: boolean;
+};
+
 const MINCFO_BASE_URL =
   process.env.NEXT_PUBLIC_MINCFO_BASE_URL || "http://localhost:3000";
 const MINCFO_RETURN_TO_PARTNER_URL =
@@ -102,9 +110,17 @@ export default function EconomyPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [debugNote, setDebugNote] = useState("");
   const [events, setEvents] = useState<LoggedEvent[]>([]);
+  const [resumeDebug, setResumeDebug] = useState<ResumeDebugState>({
+    postMessageReceived: false,
+    lastReason: "initial",
+    iframeUrlBeforeRelaunch: "",
+    iframeUrlAfterRelaunch: "",
+    freshTokenMinted: false,
+  });
   const iframeUrlRef = useRef("");
   const hasAutoLaunchedRef = useRef(false);
   const hasHydratedFormRef = useRef(false);
+  const hasReceivedAuthCompleteRef = useRef(false);
 
   const requestBody = useMemo(
     () => ({
@@ -138,6 +154,13 @@ export default function EconomyPage() {
       stillValid: typeof decodedPayload?.exp === "number" ? decodedPayload.exp > now : false,
     });
   }, [mintedToken, iframeUrl]);
+
+  function recordResumeDebug(partial: Partial<ResumeDebugState>) {
+    setResumeDebug((current) => ({
+      ...current,
+      ...partial,
+    }));
+  }
 
   useEffect(() => {
     try {
@@ -186,6 +209,11 @@ export default function EconomyPage() {
 
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
+      console.log("POST_MESSAGE_RECEIVED", {
+        origin: event.origin,
+        data: event.data,
+      });
+
       if (event.origin !== TRUSTED_MESSAGE_ORIGIN) {
         return;
       }
@@ -206,7 +234,19 @@ export default function EconomyPage() {
         "type" in event.data &&
         event.data.type === "mincfo:auth-complete"
       ) {
-        void mintToken();
+        hasReceivedAuthCompleteRef.current = true;
+        recordResumeDebug({
+          postMessageReceived: true,
+          lastReason: "postMessage:mincfo:auth-complete",
+          iframeUrlBeforeRelaunch: iframeUrlRef.current,
+          freshTokenMinted: false,
+        });
+        console.log("AUTH_COMPLETE_MESSAGE_RECEIVED", {
+          origin: event.origin,
+          openerPreserved: true,
+          iframeUrlBeforeRelaunch: iframeUrlRef.current,
+        });
+        void mintToken("postMessage:mincfo:auth-complete");
       }
     }
 
@@ -238,7 +278,21 @@ export default function EconomyPage() {
         return;
       }
 
-      void mintToken();
+      const reason = hasReceivedAuthCompleteRef.current
+        ? "resume:return-after-auth"
+        : "resume:fallback-no-postmessage";
+
+      console.log("RESUME_FALLBACK_TRIGGERED", {
+        reason,
+        iframeUrlBeforeRelaunch: currentUrl,
+        postMessageReceived: hasReceivedAuthCompleteRef.current,
+      });
+      recordResumeDebug({
+        lastReason: reason,
+        iframeUrlBeforeRelaunch: currentUrl,
+        freshTokenMinted: false,
+      });
+      void mintToken(reason);
     }
 
     function handleVisibilityChange() {
@@ -276,11 +330,16 @@ export default function EconomyPage() {
     return `${MINCFO_BASE_URL}${form.target}${separator}token=${encodeURIComponent(token)}`;
   }
 
-  async function mintToken() {
+  async function mintToken(reason = "manual-launch") {
     setIsMinting(true);
     setErrorMessage("");
 
     try {
+      console.log("MINT_TOKEN_REQUEST", {
+        reason,
+        requestBody,
+        iframeUrlBeforeRelaunch: iframeUrlRef.current,
+      });
       const response = await fetch(PARTNER_TOKEN_API_ROUTE, {
         method: "POST",
         headers: {
@@ -308,9 +367,21 @@ export default function EconomyPage() {
       }
 
       const launchUrl = buildStartUrl(token);
+      console.log("IFRAME_RELAUNCH", {
+        reason,
+        iframeUrlBeforeRelaunch: iframeUrlRef.current,
+        iframeUrlAfterRelaunch: launchUrl,
+        freshTokenMinted: true,
+      });
       setMintedToken(token);
       setIframeUrl(launchUrl);
       setLastLaunchUrl(launchUrl);
+      recordResumeDebug({
+        lastReason: reason,
+        iframeUrlBeforeRelaunch: iframeUrlRef.current,
+        iframeUrlAfterRelaunch: launchUrl,
+        freshTokenMinted: true,
+      });
     } catch (error) {
       setMintedToken("");
       setIframeUrl("");
@@ -321,7 +392,7 @@ export default function EconomyPage() {
   }
 
   function relaunchEmbed() {
-    void mintToken();
+    void mintToken("manual-relaunch");
   }
 
   function clearState() {
@@ -332,6 +403,14 @@ export default function EconomyPage() {
     setErrorMessage("");
     setDebugNote("");
     setEvents([]);
+    setResumeDebug({
+      postMessageReceived: false,
+      lastReason: "cleared",
+      iframeUrlBeforeRelaunch: "",
+      iframeUrlAfterRelaunch: "",
+      freshTokenMinted: false,
+    });
+    hasReceivedAuthCompleteRef.current = false;
   }
 
   function launchDirectEmbed() {
@@ -395,7 +474,11 @@ export default function EconomyPage() {
       </section>
 
       <section style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
-        <button onClick={mintToken} disabled={isMinting} style={{ padding: "10px 14px" }}>
+        <button
+          onClick={() => void mintToken("manual-launch")}
+          disabled={isMinting}
+          style={{ padding: "10px 14px" }}
+        >
           {isMinting ? "Launching..." : "Launch Embed"}
         </button>
         <button onClick={relaunchEmbed} disabled={isMinting} style={{ padding: "10px 14px" }}>
@@ -501,6 +584,7 @@ export default function EconomyPage() {
           <DebugPanel title="Last Launch URL" value={lastLaunchUrl || "(none)"} />
           <DebugPanel title="Token Request Body" value={prettyValue(requestBody)} />
           <DebugPanel title="Token Response" value={mintResponse || "(none)"} />
+          <DebugPanel title="Resume Debug" value={prettyValue(resumeDebug)} />
           <DebugPanel
             title={`postMessage Events (${events.length})`}
             value={
