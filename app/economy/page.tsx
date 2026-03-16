@@ -14,9 +14,6 @@ type FormState = {
   returnToPartner: string;
 };
 
-const PARTNER_ID = "dummy-app";
-const REQUIRED_RETURN_TO_PARTNER_URL = "https://dummy-app-liart.vercel.app/economy";
-
 type LoggedEvent = {
   id: string;
   timestamp: string;
@@ -26,10 +23,12 @@ type LoggedEvent = {
 
 const MINCFO_BASE_URL =
   process.env.NEXT_PUBLIC_MINCFO_BASE_URL || "http://localhost:3000";
-const MINCFO_RETURN_TO_PARTNER_URL = REQUIRED_RETURN_TO_PARTNER_URL;
+const MINCFO_RETURN_TO_PARTNER_URL =
+  process.env.NEXT_PUBLIC_MINCFO_RETURN_TO_PARTNER_URL || "http://localhost:3001/economy";
 const TRUSTED_MESSAGE_ORIGIN = new URL(MINCFO_BASE_URL).origin;
 const FORM_STORAGE_KEY = "onio-partner-simulator-form";
 const PARTNER_TOKEN_API_ROUTE = "/api/mincfo/embed-token";
+const PARTNER_ID = "dummy-app";
 
 const initialForm: FormState = {
   partner: PARTNER_ID,
@@ -117,8 +116,6 @@ export default function EconomyPage() {
       setForm((current) => ({
         ...current,
         ...parsed,
-        partner: PARTNER_ID,
-        returnToPartner: MINCFO_RETURN_TO_PARTNER_URL,
       }));
     } catch {
       // Ignore invalid localStorage state and keep defaults.
@@ -132,14 +129,7 @@ export default function EconomyPage() {
       return;
     }
 
-    window.localStorage.setItem(
-      FORM_STORAGE_KEY,
-      JSON.stringify({
-        ...form,
-        partner: PARTNER_ID,
-        returnToPartner: MINCFO_RETURN_TO_PARTNER_URL,
-      }),
-    );
+    window.localStorage.setItem(FORM_STORAGE_KEY, JSON.stringify(form));
   }, [form]);
 
   function reloadIframeUrl(url: string) {
@@ -234,10 +224,6 @@ export default function EconomyPage() {
   }, []);
 
   function updateField(name: keyof FormState, value: string) {
-    if (name === "partner" || name === "returnToPartner") {
-      return;
-    }
-
     setForm((current) => ({ ...current, [name]: value }));
   }
 
@@ -367,7 +353,6 @@ export default function EconomyPage() {
             <input
               value={value}
               onChange={(event) => updateField(name, event.target.value)}
-              readOnly={name === "partner" || name === "returnToPartner"}
               style={{ padding: 8, border: "1px solid #bbb" }}
             />
           </label>

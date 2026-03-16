@@ -2,8 +2,6 @@ import { createHmac, randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
 const TOKEN_TTL_SECONDS = 5 * 60;
-const PARTNER_ID = "dummy-app";
-const REQUIRED_EMBED_SECRET = "dev-test-embed-secret";
 
 type EmbedTokenRequest = {
   partner?: string;
@@ -33,14 +31,10 @@ function getEmbedSecret() {
     throw new Error("MINCFO_EMBED_SHARED_SECRET is not configured");
   }
 
-  if (secret !== REQUIRED_EMBED_SECRET) {
-    throw new Error(
-      `MINCFO_EMBED_SHARED_SECRET must be set to \`${REQUIRED_EMBED_SECRET}\` for ${PARTNER_ID}`,
-    );
-  }
-
   return secret;
 }
+
+const PARTNER_ID = "dummy-app";
 
 export async function POST(request: Request) {
   const body = (await request.json()) as EmbedTokenRequest;
