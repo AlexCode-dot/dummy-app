@@ -16,9 +16,11 @@ Minimal Next.js partner-platform simulator for testing an embedded MinCFO integr
 
 Set these env vars in `.env.local` for local development and in your deployment platform config for production:
 
-- `MINCFO_EMBED_SHARED_SECRET`: required MinCFO shared secret used to sign embed launch tokens
+- `MINCFO_EMBED_SHARED_SECRET`: must be `dev-test-embed-secret` for the `dummy-app` partner flow
 - `NEXT_PUBLIC_MINCFO_BASE_URL`: MinCFO app base URL used by the browser iframe flow
-- `NEXT_PUBLIC_MINCFO_RETURN_TO_PARTNER_URL`: return URL back to this app used by the browser launch flow
+
+The simulator always launches MinCFO through `/embed/partner/dummy-app/start?...` and always sets
+`returnToPartner=https://dummy-app-liart.vercel.app/economy`.
 
 You can start from `.env.example`.
 
