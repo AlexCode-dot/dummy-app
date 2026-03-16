@@ -23,16 +23,15 @@ type LoggedEvent = {
 
 const MINCFO_BASE_URL =
   process.env.NEXT_PUBLIC_MINCFO_BASE_URL || "http://localhost:3000";
-const MINCFO_PARTNER_ID =
-  process.env.NEXT_PUBLIC_MINCFO_PARTNER_ID || "onio";
 const MINCFO_RETURN_TO_PARTNER_URL =
   process.env.NEXT_PUBLIC_MINCFO_RETURN_TO_PARTNER_URL || "http://localhost:3001/economy";
 const TRUSTED_MESSAGE_ORIGIN = new URL(MINCFO_BASE_URL).origin;
 const FORM_STORAGE_KEY = "onio-partner-simulator-form";
 const PARTNER_TOKEN_API_ROUTE = "/api/mincfo/embed-token";
+const PARTNER_ID = "dummy-app";
 
 const initialForm: FormState = {
-  partner: MINCFO_PARTNER_ID,
+  partner: PARTNER_ID,
   sub: "demo-user-1",
   externalTenantId: "demo-tenant-1",
   externalAccountId: "demo-account-1",

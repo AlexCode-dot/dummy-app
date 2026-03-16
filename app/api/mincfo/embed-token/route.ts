@@ -34,9 +34,7 @@ function getEmbedSecret() {
   return secret;
 }
 
-function getPartnerId() {
-  return process.env.MINCFO_PARTNER_ID || "onio";
-}
+const PARTNER_ID = "dummy-app";
 
 export async function POST(request: Request) {
   const body = (await request.json()) as EmbedTokenRequest;
@@ -54,12 +52,10 @@ export async function POST(request: Request) {
     );
   }
 
-  const partnerId = getPartnerId();
-
-  if (body.partner && body.partner !== partnerId) {
+  if (body.partner && body.partner !== PARTNER_ID) {
     return NextResponse.json(
       {
-        error: `This simulator is configured for partner \`${partnerId}\` only`,
+        error: `This simulator is configured for partner \`${PARTNER_ID}\` only`,
       },
       { status: 400 },
     );
@@ -68,7 +64,7 @@ export async function POST(request: Request) {
   const now = Math.floor(Date.now() / 1000);
   const nonce = randomUUID();
   const payload = {
-    partner: partnerId,
+    partner: PARTNER_ID,
     sub: body.sub,
     externalTenantId: body.externalTenantId || undefined,
     externalAccountId: body.externalAccountId || undefined,
