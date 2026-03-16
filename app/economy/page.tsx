@@ -30,10 +30,17 @@ type EmbedPayload = {
 
 type ResumeDebugState = {
   postMessageReceived: boolean;
+  postMessageEventCount: number;
+  lastPostMessageAt: string;
+  lastPostMessageOrigin: string;
+  lastPostMessageData: string;
+  lastMatchedAuthCompleteAt: string;
   lastReason: string;
   iframeUrlBeforeRelaunch: string;
   iframeUrlAfterRelaunch: string;
+  relaunchHappened: boolean;
   freshTokenMinted: boolean;
+  lastTokenMintAt: string;
 };
 
 const MINCFO_BASE_URL =
@@ -99,6 +106,18 @@ function decodePayloadSegment(token: string): EmbedPayload | null {
   }
 }
 
+function getResumeConclusion(resumeDebug: ResumeDebugState) {
+  if (!resumeDebug.postMessageReceived) {
+    return "A. No auth-complete event has been received. If login completed in a separate window, window.opener may have been lost and only the fallback relaunch path can work.";
+  }
+
+  if (!resumeDebug.relaunchHappened) {
+    return "B. An auth-complete event was received, but no iframe relaunch has been recorded yet.";
+  }
+
+  return "Auth-complete event was received and the iframe was relaunched with a fresh token. If MinCFO still shows sign-in, this points to a MinCFO iframe session or cookie issue after top-level login.";
+}
+
 export default function EconomyPage() {
   const [form, setForm] = useState<FormState>(initialForm);
   const [isMinting, setIsMinting] = useState(false);
@@ -112,15 +131,23 @@ export default function EconomyPage() {
   const [events, setEvents] = useState<LoggedEvent[]>([]);
   const [resumeDebug, setResumeDebug] = useState<ResumeDebugState>({
     postMessageReceived: false,
+    postMessageEventCount: 0,
+    lastPostMessageAt: "",
+    lastPostMessageOrigin: "",
+    lastPostMessageData: "",
+    lastMatchedAuthCompleteAt: "",
     lastReason: "initial",
     iframeUrlBeforeRelaunch: "",
     iframeUrlAfterRelaunch: "",
+    relaunchHappened: false,
     freshTokenMinted: false,
+    lastTokenMintAt: "",
   });
   const iframeUrlRef = useRef("");
   const hasAutoLaunchedRef = useRef(false);
   const hasHydratedFormRef = useRef(false);
   const hasReceivedAuthCompleteRef = useRef(false);
+  const postMessageEventCountRef = useRef(0);
 
   const requestBody = useMemo(
     () => ({
@@ -209,9 +236,17 @@ export default function EconomyPage() {
 
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
+      const timestamp = new Date().toISOString();
       console.log("POST_MESSAGE_RECEIVED", {
         origin: event.origin,
         data: event.data,
+      });
+      postMessageEventCountRef.current += 1;
+      recordResumeDebug({
+        postMessageEventCount: postMessageEventCountRef.current,
+        lastPostMessageAt: timestamp,
+        lastPostMessageOrigin: event.origin,
+        lastPostMessageData: prettyValue(event.data),
       });
 
       if (event.origin !== TRUSTED_MESSAGE_ORIGIN) {
@@ -237,8 +272,11 @@ export default function EconomyPage() {
         hasReceivedAuthCompleteRef.current = true;
         recordResumeDebug({
           postMessageReceived: true,
+          lastMatchedAuthCompleteAt: timestamp,
           lastReason: "postMessage:mincfo:auth-complete",
           iframeUrlBeforeRelaunch: iframeUrlRef.current,
+          iframeUrlAfterRelaunch: "",
+          relaunchHappened: false,
           freshTokenMinted: false,
         });
         console.log("AUTH_COMPLETE_MESSAGE_RECEIVED", {
@@ -290,6 +328,8 @@ export default function EconomyPage() {
       recordResumeDebug({
         lastReason: reason,
         iframeUrlBeforeRelaunch: currentUrl,
+        iframeUrlAfterRelaunch: "",
+        relaunchHappened: false,
         freshTokenMinted: false,
       });
       void mintToken(reason);
@@ -373,6 +413,7 @@ export default function EconomyPage() {
         iframeUrlAfterRelaunch: launchUrl,
         freshTokenMinted: true,
       });
+      const mintedAt = new Date().toISOString();
       setMintedToken(token);
       setIframeUrl(launchUrl);
       setLastLaunchUrl(launchUrl);
@@ -380,7 +421,9 @@ export default function EconomyPage() {
         lastReason: reason,
         iframeUrlBeforeRelaunch: iframeUrlRef.current,
         iframeUrlAfterRelaunch: launchUrl,
+        relaunchHappened: true,
         freshTokenMinted: true,
+        lastTokenMintAt: mintedAt,
       });
     } catch (error) {
       setMintedToken("");
@@ -405,12 +448,20 @@ export default function EconomyPage() {
     setEvents([]);
     setResumeDebug({
       postMessageReceived: false,
+      postMessageEventCount: 0,
+      lastPostMessageAt: "",
+      lastPostMessageOrigin: "",
+      lastPostMessageData: "",
+      lastMatchedAuthCompleteAt: "",
       lastReason: "cleared",
       iframeUrlBeforeRelaunch: "",
       iframeUrlAfterRelaunch: "",
+      relaunchHappened: false,
       freshTokenMinted: false,
+      lastTokenMintAt: "",
     });
     hasReceivedAuthCompleteRef.current = false;
+    postMessageEventCountRef.current = 0;
   }
 
   function launchDirectEmbed() {
@@ -584,6 +635,7 @@ export default function EconomyPage() {
           <DebugPanel title="Last Launch URL" value={lastLaunchUrl || "(none)"} />
           <DebugPanel title="Token Request Body" value={prettyValue(requestBody)} />
           <DebugPanel title="Token Response" value={mintResponse || "(none)"} />
+          <DebugPanel title="Resume Conclusion" value={getResumeConclusion(resumeDebug)} />
           <DebugPanel title="Resume Debug" value={prettyValue(resumeDebug)} />
           <DebugPanel
             title={`postMessage Events (${events.length})`}
