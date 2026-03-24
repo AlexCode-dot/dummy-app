@@ -591,7 +591,7 @@ export default function EconomyPage() {
       >
         <div
           style={{
-            minHeight: 640,
+            minHeight: 800,
             background: "#fff",
             border: "1px solid #ccc",
             padding: 12,
@@ -603,12 +603,12 @@ export default function EconomyPage() {
               key={`${iframeInstance}:${iframeUrl}`}
               src={iframeUrl}
               title="MinCFO embed simulator"
-              style={{ width: "100%", height: 560, border: "1px solid #bbb" }}
+              style={{ width: "100%", height: 720, border: "1px solid #bbb" }}
             />
           ) : (
             <div
               style={{
-                height: 560,
+                height: 720,
                 border: "1px dashed #bbb",
                 display: "flex",
                 alignItems: "center",
