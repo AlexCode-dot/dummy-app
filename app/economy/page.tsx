@@ -51,6 +51,8 @@ const TRUSTED_MESSAGE_ORIGIN = new URL(MINCFO_BASE_URL).origin;
 const FORM_STORAGE_KEY = "onio-partner-simulator-form";
 const PARTNER_TOKEN_API_ROUTE = "/api/mincfo/embed-token";
 const PARTNER_ID = "dummy-app";
+const RESUME_RELAUNCH_COOLDOWN_MS = 5000;
+const RESUME_FALLBACK_MIN_BACKGROUND_MS = 1500;
 
 const initialForm: FormState = {
   partner: PARTNER_ID,
@@ -148,6 +150,10 @@ export default function EconomyPage() {
   const hasHydratedFormRef = useRef(false);
   const hasReceivedAuthCompleteRef = useRef(false);
   const postMessageEventCountRef = useRef(0);
+  const pageBackgroundedAtRef = useRef<number | null>(null);
+  const resumeMintInFlightRef = useRef(false);
+  const lastResumeAttemptAtRef = useRef(0);
+  const fallbackResumeUsedRef = useRef(false);
 
   const requestBody = useMemo(
     () => ({
@@ -310,9 +316,35 @@ export default function EconomyPage() {
   }, [form, requestBody]);
 
   useEffect(() => {
-    function handlePageReturn() {
+    function markPageBackgrounded() {
+      pageBackgroundedAtRef.current = Date.now();
+    }
+
+    function handlePageReturn(trigger: "focus" | "pageshow" | "visibilitychange") {
       const currentUrl = iframeUrlRef.current;
       if (!currentUrl) {
+        return;
+      }
+
+      if (resumeMintInFlightRef.current) {
+        return;
+      }
+
+      const now = Date.now();
+      if (now - lastResumeAttemptAtRef.current < RESUME_RELAUNCH_COOLDOWN_MS) {
+        return;
+      }
+
+      const backgroundedAt = pageBackgroundedAtRef.current;
+      const wasBackgroundedLongEnough =
+        typeof backgroundedAt === "number" &&
+        now - backgroundedAt >= RESUME_FALLBACK_MIN_BACKGROUND_MS;
+
+      const shouldResume =
+        hasReceivedAuthCompleteRef.current ||
+        (wasBackgroundedLongEnough && !fallbackResumeUsedRef.current);
+
+      if (!shouldResume) {
         return;
       }
 
@@ -321,10 +353,20 @@ export default function EconomyPage() {
         : "resume:fallback-no-postmessage";
 
       console.log("RESUME_FALLBACK_TRIGGERED", {
+        trigger,
         reason,
         iframeUrlBeforeRelaunch: currentUrl,
         postMessageReceived: hasReceivedAuthCompleteRef.current,
+        fallbackResumeUsed: fallbackResumeUsedRef.current,
+        backgroundedForMs:
+          typeof backgroundedAt === "number" ? now - backgroundedAt : null,
       });
+      pageBackgroundedAtRef.current = null;
+      resumeMintInFlightRef.current = true;
+      lastResumeAttemptAtRef.current = now;
+      if (!hasReceivedAuthCompleteRef.current) {
+        fallbackResumeUsedRef.current = true;
+      }
       recordResumeDebug({
         lastReason: reason,
         iframeUrlBeforeRelaunch: currentUrl,
@@ -332,22 +374,39 @@ export default function EconomyPage() {
         relaunchHappened: false,
         freshTokenMinted: false,
       });
-      void mintToken(reason);
+      void mintToken(reason).finally(() => {
+        resumeMintInFlightRef.current = false;
+      });
+    }
+
+    function handleFocus() {
+      handlePageReturn("focus");
+    }
+
+    function handlePageShow() {
+      handlePageReturn("pageshow");
     }
 
     function handleVisibilityChange() {
+      if (document.visibilityState === "hidden") {
+        markPageBackgrounded();
+        return;
+      }
+
       if (document.visibilityState === "visible") {
-        handlePageReturn();
+        handlePageReturn("visibilitychange");
       }
     }
 
-    window.addEventListener("focus", handlePageReturn);
-    window.addEventListener("pageshow", handlePageReturn);
+    window.addEventListener("blur", markPageBackgrounded);
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("pageshow", handlePageShow);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      window.removeEventListener("focus", handlePageReturn);
-      window.removeEventListener("pageshow", handlePageReturn);
+      window.removeEventListener("blur", markPageBackgrounded);
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("pageshow", handlePageShow);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
@@ -414,8 +473,9 @@ export default function EconomyPage() {
         freshTokenMinted: true,
       });
       const mintedAt = new Date().toISOString();
+      fallbackResumeUsedRef.current = false;
       setMintedToken(token);
-      setIframeUrl(launchUrl);
+      reloadIframeUrl(launchUrl);
       setLastLaunchUrl(launchUrl);
       recordResumeDebug({
         lastReason: reason,
@@ -462,6 +522,7 @@ export default function EconomyPage() {
     });
     hasReceivedAuthCompleteRef.current = false;
     postMessageEventCountRef.current = 0;
+    fallbackResumeUsedRef.current = false;
   }
 
   function launchDirectEmbed() {
@@ -471,7 +532,7 @@ export default function EconomyPage() {
     }
 
     setErrorMessage("");
-    setIframeUrl(buildDirectEmbedUrl(mintedToken));
+    reloadIframeUrl(buildDirectEmbedUrl(mintedToken));
   }
 
   function reuseLastLaunchUrl() {
@@ -481,7 +542,7 @@ export default function EconomyPage() {
     }
 
     setErrorMessage("");
-    setIframeUrl(lastLaunchUrl);
+    reloadIframeUrl(lastLaunchUrl);
   }
 
   return (
